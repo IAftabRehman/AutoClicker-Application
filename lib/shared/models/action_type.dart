@@ -1,0 +1,4 @@
+enum ActionType {
+  tap,
+  swipe,
+}
