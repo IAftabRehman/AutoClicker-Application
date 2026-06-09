@@ -209,6 +209,16 @@ class BotAccessibilityService : AccessibilityService() {
     }
 
     private fun dispatchTapGesture(x: Float, y: Float, holdTimeMs: Long, onGestureCompleted: () -> Unit) {
+        val metrics = resources.displayMetrics
+        val screenWidth = metrics.widthPixels
+        val screenHeight = metrics.heightPixels
+
+        if (x <= 0 || y <= 0 || x > screenWidth || y > screenHeight) {
+            Log.e("BotService", "Invalid coordinates for tap: ($x, $y). Screen size: ${screenWidth}x${screenHeight}")
+            onGestureCompleted()
+            return
+        }
+
         val path = Path()
         path.moveTo(x, y)
         
@@ -229,10 +239,25 @@ class BotAccessibilityService : AccessibilityService() {
             }
         }
 
-        dispatchGesture(gesture, callback, null)
+        val dispatched = dispatchGesture(gesture, callback, null)
+        if (!dispatched) {
+            Log.e("BotService", "Failed to dispatch gesture. Check permissions or coordinates.")
+            onGestureCompleted()
+        }
     }
 
     private fun dispatchSwipeGesture(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long, isCurved: Boolean = false, onGestureCompleted: () -> Unit) {
+        val metrics = resources.displayMetrics
+        val screenWidth = metrics.widthPixels
+        val screenHeight = metrics.heightPixels
+
+        if (startX <= 0 || startY <= 0 || startX > screenWidth || startY > screenHeight ||
+            endX <= 0 || endY <= 0 || endX > screenWidth || endY > screenHeight) {
+            Log.e("BotService", "Invalid coordinates for swipe: ($startX, $startY) to ($endX, $endY)")
+            onGestureCompleted()
+            return
+        }
+
         val path = Path()
         path.moveTo(startX, startY)
         
@@ -269,7 +294,11 @@ class BotAccessibilityService : AccessibilityService() {
             }
         }
 
-        dispatchGesture(gesture, callback, null)
+        val dispatched = dispatchGesture(gesture, callback, null)
+        if (!dispatched) {
+            Log.e("BotService", "Failed to dispatch gesture. Check permissions or coordinates.")
+            onGestureCompleted()
+        }
     }
 
     fun stopExecutionLoop(reason: String = "Status: STOPPED") {
@@ -326,11 +355,14 @@ class BotAccessibilityService : AccessibilityService() {
             val bitmap = Bitmap.createBitmap(image.width + rowPadding / pixelStride, image.height, Bitmap.Config.ARGB_8888)
             bitmap.copyPixelsFromBuffer(buffer)
             
+            // Crop the bitmap to remove the padding
+            val croppedBitmap = Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height)
+            
             // Fast pattern matching via downscaling
             val scaleFactor = 0.25f
-            val scaledWidth = (bitmap.width * scaleFactor).toInt()
-            val scaledHeight = (bitmap.height * scaleFactor).toInt()
-            val scaledScreen = Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, false)
+            val scaledWidth = (croppedBitmap.width * scaleFactor).toInt()
+            val scaledHeight = (croppedBitmap.height * scaleFactor).toInt()
+            val scaledScreen = Bitmap.createScaledBitmap(croppedBitmap, scaledWidth, scaledHeight, false)
             
             val scaledTemplateWidth = (template.width * scaleFactor).toInt()
             val scaledTemplateHeight = (template.height * scaleFactor).toInt()
@@ -401,7 +433,8 @@ class BotAccessibilityService : AccessibilityService() {
             }
             
             bitmap.recycle()
-            if (scaledScreen != bitmap) scaledScreen.recycle()
+            croppedBitmap.recycle()
+            if (scaledScreen != croppedBitmap) scaledScreen.recycle()
             if (scaledTemplate != template) scaledTemplate.recycle()
             
             if (!found) {
