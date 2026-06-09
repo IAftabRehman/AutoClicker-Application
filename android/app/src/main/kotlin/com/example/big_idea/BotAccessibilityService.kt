@@ -43,6 +43,11 @@ class BotAccessibilityService : AccessibilityService() {
     private var maxRepeatCount: Int = 0
     private var currentRepeatIteration: Int = 0
 
+    private var isSmartModeEnabled: Boolean = true
+    private var retryTextToFind: String = "Request Cannot be Processed"
+    private var backButtonX: Float = 100f
+    private var backButtonY: Float = 150f
+
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
@@ -86,13 +91,9 @@ class BotAccessibilityService : AccessibilityService() {
         stopService(Intent(this, ScreenCaptureService::class.java))
     }
 
-    fun receiveAutomationSequence(stepsRaw: Any?, configRaw: Any?, conditionImageBytes: ByteArray? = null) {
+    fun receiveAutomationSequence(stepsRaw: Any?, configRaw: Any?) {
         try {
-            if (conditionImageBytes != null) {
-                targetTemplateBitmap = BitmapFactory.decodeByteArray(conditionImageBytes, 0, conditionImageBytes.size)
-            } else {
-                targetTemplateBitmap = null
-            }
+            targetTemplateBitmap = null
             
             val configMap = configRaw as? Map<String, Any>
             if (configMap != null) {
@@ -101,6 +102,11 @@ class BotAccessibilityService : AccessibilityService() {
                     idleBreakDurationMs = (configMap["idleBreakDurationMs"] as? Number)?.toInt() ?: 0,
                     maxSequenceTimeoutMs = (configMap["maxSequenceTimeoutMs"] as? Number)?.toInt() ?: 0
                 )
+                
+                isSmartModeEnabled = true
+                retryTextToFind = configMap["targetWaitText"] as? String ?: "Request Cannot be Processed"
+                backButtonX = (configMap["smartBackX"] as? Number)?.toFloat() ?: 50f
+                backButtonY = (configMap["smartBackY"] as? Number)?.toFloat() ?: 50f
             }
 
             val stepsList = stepsRaw as? List<Map<String, Any>>
@@ -134,7 +140,15 @@ class BotAccessibilityService : AccessibilityService() {
         }
     }
 
+    fun getSequenceSize(): Int = currentSequence.size
+
+    fun updateSequence(newSequence: List<BotActionStep>) {
+        currentSequence = newSequence
+        Log.d("BotService", "Sequence updated with ${newSequence.size} steps.")
+    }
+
     fun startExecutionLoop() {
+        Log.d("BotService", "startExecutionLoop successfully called. Starting loop...")
         if (executionJob?.isActive == true) {
             executionJob?.cancel()
         }
@@ -149,7 +163,7 @@ class BotAccessibilityService : AccessibilityService() {
                 FloatingOverlayService.instance?.updateLoopCount(currentRepeatIteration + 1)
                 
                 if (!analyzeScreenForConditions()) {
-                    sendStopNotification()
+                    sendCustomNotification("Action Required", "Bot stopped due to screen change!")
                     stopExecutionLoop("Status: STOPPED (Image Not Found)")
                     stopAutomationSequence()
                     break
@@ -200,6 +214,24 @@ class BotAccessibilityService : AccessibilityService() {
                 }
                 
                 if (!isActive) break
+                
+                if (isSmartModeEnabled) {
+                    Log.d("BotService", "Waiting for network/loading...")
+                    FloatingOverlayService.instance?.updateStatus("Status: SCANNING", "#FF9800")
+                    val foundRetry = waitForText(retryTextToFind, 15000)
+                    
+                    if (foundRetry) {
+                        Log.d("BotService", "Retry found, clicking back button")
+                        dispatchTapGesture(backButtonX, backButtonY, 50) {}
+                        delay(1000)
+                        FloatingOverlayService.instance?.updateStatus("Status: RUNNING", "#4CAF50")
+                    } else {
+                        Log.d("BotService", "Success or timeout! Breaking loop.")
+                        stopAutomationSequence()
+                        sendCustomNotification("Action Required", "Status Changed or Date Found! Bot Stopped.")
+                        break
+                    }
+                }
                 
                 currentRepeatIteration++
                 delay(1000)
@@ -315,6 +347,27 @@ class BotAccessibilityService : AccessibilityService() {
         hideEmergencyStopButton()
         stopService(Intent(this, ScreenCaptureService::class.java))
         Log.d("BotService", "Automation Sequence Stopped and Cleared.")
+    }
+
+    private fun isTextPresentOnScreen(targetText: String): Boolean {
+        val rootNode = rootInActiveWindow ?: return false
+        val nodes = rootNode.findAccessibilityNodeInfosByText(targetText)
+        val found = nodes.isNotEmpty()
+        nodes.forEach { it.recycle() }
+        rootNode.recycle()
+        return found
+    }
+
+    private suspend fun waitForText(targetText: String, timeoutMs: Long = 15000): Boolean = withContext(Dispatchers.Default) {
+        val startTime = System.currentTimeMillis()
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            if (!isActive) return@withContext false
+            if (isTextPresentOnScreen(targetText)) {
+                return@withContext true
+            }
+            delay(500)
+        }
+        return@withContext false
     }
 
     fun setupScreenCapture(resultCode: Int, data: Intent) {
@@ -463,7 +516,7 @@ class BotAccessibilityService : AccessibilityService() {
         return Math.abs(r1 - r2) <= tolerance && Math.abs(g1 - g2) <= tolerance && Math.abs(b1 - b2) <= tolerance
     }
 
-    private fun sendStopNotification() {
+    private fun sendCustomNotification(title: String, text: String) {
         val channelId = "bot_alert_channel"
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         
@@ -474,15 +527,15 @@ class BotAccessibilityService : AccessibilityService() {
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val notification = android.app.Notification.Builder(this, channelId)
-                .setContentTitle("Action Required")
-                .setContentText("Bot stopped due to screen change!")
+                .setContentTitle(title)
+                .setContentText(text)
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
                 .build()
             manager.notify(1001, notification)
         } else {
             val notification = android.app.Notification.Builder(this)
-                .setContentTitle("Action Required")
-                .setContentText("Bot stopped due to screen change!")
+                .setContentTitle(title)
+                .setContentText(text)
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
                 .build()
             manager.notify(1001, notification)

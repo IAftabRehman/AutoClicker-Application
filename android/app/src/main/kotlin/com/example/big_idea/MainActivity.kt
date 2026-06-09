@@ -82,12 +82,11 @@ class MainActivity: FlutterActivity() {
                 "startAutomation" -> {
                     val steps = call.argument<Any>("steps")
                     val config = call.argument<Any>("config")
-                    val conditionImage = call.argument<ByteArray>("conditionImage")
                     val service = BotAccessibilityService.instance
                     if (service == null) {
                         result.error("ACCESSIBILITY_DISABLED", "Accessibility Service is not running", null)
                     } else {
-                        service.receiveAutomationSequence(steps, config, conditionImage)
+                        service.receiveAutomationSequence(steps, config)
                         result.success(true)
                     }
                 }

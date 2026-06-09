@@ -173,14 +173,46 @@ class FloatingOverlayService : Service() {
         }
 
         btnPlay.setOnClickListener {
-            val service = BotAccessibilityService.instance
-            if (service == null) {
-                Toast.makeText(this@FloatingOverlayService, "Please enable Accessibility Service first.", Toast.LENGTH_SHORT).show()
-            } else if (service.currentSequence.isNotEmpty()) {
-                service.startExecutionLoop()
-                updateStatus("Status: RUNNING", "#4CAF50")
+            val botService = BotAccessibilityService.instance
+            if (botService == null) {
+                Log.e("OverlayUI", "Play failed: BotAccessibilityService is NULL.")
+                Toast.makeText(this@FloatingOverlayService, "Please Turn ON Accessibility Service first!", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
             }
-            Log.d("OverlayUI", "Play Button Clicked")
+
+            if (targetViews.isEmpty()) {
+                Log.e("OverlayUI", "Play failed: No targets added.")
+                Toast.makeText(this@FloatingOverlayService, "Please add targets first!", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val mappedSteps = mutableListOf<com.example.big_idea.models.BotActionStep>()
+            for ((index, targetView) in targetViews.withIndex()) {
+                val params = targetView.layoutParams as WindowManager.LayoutParams
+                // Add half width/height (150 is the target size)
+                val exactX = params.x + (150 / 2)
+                val exactY = params.y + (150 / 2)
+                
+                mappedSteps.add(
+                    com.example.big_idea.models.BotActionStep(
+                        id = "target_$index",
+                        actionType = "tap",
+                        startX = exactX.toDouble(),
+                        startY = exactY.toDouble(),
+                        minDelayMs = 500,
+                        maxDelayMs = 1500,
+                        minHoldTimeMs = 50,
+                        maxHoldTimeMs = 150,
+                        jitterRadius = 5.0
+                    )
+                )
+            }
+
+            botService.updateSequence(mappedSteps)
+
+            Log.d("OverlayUI", "Play clicked. Synced ${targetViews.size} targets. Starting loop.")
+            botService.startExecutionLoop()
+            updateStatus("Status: RUNNING", "#4CAF50")
         }
 
         btnPause.setOnClickListener {

@@ -15,6 +15,7 @@ import '../../bot_runner/presentation/permissions_card.dart';
 import '../../bot_runner/providers/permissions_provider.dart';
 import '../../settings/providers/global_config_provider.dart';
 import '../../testing/presentation/test_playground_screen.dart';
+import '../../simulator/presentation/tamm_simulator_screen.dart';
 import '../../../core/native_bridge/native_bridge.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -27,7 +28,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen>
     with WidgetsBindingObserver {
   bool isRunning = false;
-  XFile? _conditionImage;
 
   @override
   void initState() {
@@ -110,15 +110,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  Future<void> _pickConditionImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _conditionImage = pickedFile;
-      });
-    }
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -219,51 +211,68 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               ),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _pickConditionImage,
-                    icon: const Icon(Icons.image),
-                    label: Text(_conditionImage == null ? 'Select Condition Image' : 'Change Image'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.primary,
-                      side: const BorderSide(color: AppColors.primary),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+            const SizedBox(height: 16),
+            Card(
+              color: AppColors.surface,
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Smart Automation Flow', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      initialValue: ref.read(globalConfigProvider).targetWaitText,
+                      decoration: const InputDecoration(
+                        labelText: 'Smart Wait Text (Condition)',
+                        hintText: 'Text to scan for before retrying',
+                        labelStyle: TextStyle(color: AppColors.textSecondary),
+                      ),
+                      style: const TextStyle(color: AppColors.textPrimary),
+                      onChanged: (val) {
+                        final current = ref.read(globalConfigProvider);
+                        ref.read(globalConfigProvider.notifier).updateConfig(current.copyWith(targetWaitText: val));
+                      },
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            initialValue: ref.read(globalConfigProvider).smartBackX.toString(),
+                            decoration: const InputDecoration(
+                              labelText: 'Smart Back X',
+                              labelStyle: TextStyle(color: AppColors.textSecondary),
+                            ),
+                            style: const TextStyle(color: AppColors.textPrimary),
+                            keyboardType: TextInputType.number,
+                            onChanged: (val) {
+                              final current = ref.read(globalConfigProvider);
+                              ref.read(globalConfigProvider.notifier).updateConfig(current.copyWith(smartBackX: double.tryParse(val) ?? 50.0));
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            initialValue: ref.read(globalConfigProvider).smartBackY.toString(),
+                            decoration: const InputDecoration(
+                              labelText: 'Smart Back Y',
+                              labelStyle: TextStyle(color: AppColors.textSecondary),
+                            ),
+                            style: const TextStyle(color: AppColors.textPrimary),
+                            keyboardType: TextInputType.number,
+                            onChanged: (val) {
+                              final current = ref.read(globalConfigProvider);
+                              ref.read(globalConfigProvider.notifier).updateConfig(current.copyWith(smartBackY: double.tryParse(val) ?? 50.0));
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                if (_conditionImage != null) ...[
-                  const SizedBox(width: 12),
-                  Stack(
-                    alignment: Alignment.topRight,
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.primary),
-                          image: DecorationImage(
-                            image: FileImage(File(_conditionImage!.path)),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () => setState(() => _conditionImage = null),
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.close, size: 16, color: Colors.white),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
+              ),
             ),
             const SizedBox(height: 16),
             CustomButton(
@@ -282,12 +291,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         // We add a brief 500ms delay to allow the Android permission dialog to slide up
                         await Future.delayed(const Duration(milliseconds: 500));
                         final globalConfig = ref.read(globalConfigProvider);
-                        final imageBytes = _conditionImage != null ? await _conditionImage!.readAsBytes() : null;
                         
                         await NativeBridge().startAutomationSequence(
                           botSequence,
                           globalConfig,
-                          conditionImage: imageBytes,
                         );
                         
                         await NativeBridge().startOverlay();
@@ -298,6 +305,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       }
                     }
                   : null,
+            ),
+            const SizedBox(height: 16),
+            CustomButton(
+              text: 'Open TAMM Simulator (Test Mode)',
+              color: AppColors.surface,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const TammSimulatorScreen()),
+                );
+              },
             ),
           ],
         ),

@@ -72,14 +72,13 @@ class NativeBridge {
     }
   }
 
-  Future<void> startAutomationSequence(List<BotActionStep> steps, GlobalConfig config, {Uint8List? conditionImage}) async {
+  Future<void> startAutomationSequence(List<BotActionStep> steps, GlobalConfig config) async {
     try {
       final List<Map<String, dynamic>> serializedSteps = steps.map((s) => s.toMap()).toList();
       final Map<String, dynamic> serializedConfig = config.toMap();
       await _channel.invokeMethod('startAutomation', {
         'steps': serializedSteps,
         'config': serializedConfig,
-        'conditionImage': conditionImage,
       });
     } catch (e) {
       // Handle error
